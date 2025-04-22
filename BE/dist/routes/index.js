@@ -8,22 +8,16 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-var __asyncValues = (this && this.__asyncValues) || function (o) {
-    if (!Symbol.asyncIterator) throw new TypeError("Symbol.asyncIterator is not defined.");
-    var m = o[Symbol.asyncIterator], i;
-    return m ? m.call(o) : (o = typeof __values === "function" ? __values(o) : o[Symbol.iterator](), i = {}, verb("next"), verb("throw"), verb("return"), i[Symbol.asyncIterator] = function () { return this; }, i);
-    function verb(n) { i[n] = o[n] && function (v) { return new Promise(function (resolve, reject) { v = o[n](v), settle(resolve, reject, v.done, v.value); }); }; }
-    function settle(resolve, reject, d, v) { Promise.resolve(v).then(function(v) { resolve({ value: v, done: d }); }, reject); }
-};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const openai_1 = __importDefault(require("openai"));
-const react_1 = require("../constants/react");
-const node_1 = require("../constants/node");
 const system_1 = require("../constants/system");
+const prompts_1 = require("../prompts");
+const node_1 = require("../defaults/node");
+const react_1 = require("../defaults/react");
 require("dotenv").config();
 const apiKey = process.env.OPENAI_API_KEY;
 const client = new openai_1.default({
@@ -59,22 +53,16 @@ routeRouter.post('/get-template', (req, res) => __awaiter(void 0, void 0, void 0
     }
     else {
         if (tech === 'react') {
-            res.status(200).json({
-                system: [
-                    { id: "topLevelPrompt", message: react_1.topLevelPrompt },
-                    { id: "basicPrompt", message: react_1.basicPrompt },
-                    { id: "reactLastPrompt", message: reactLastPrompt },
-                    { id: "userPrompt", message: prompt }
-                ],
+            res.json({
+                prompts: [prompts_1.BASE_PROMPT, `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${react_1.basePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
+                uiPrompts: [react_1.basePrompt]
             });
             return;
         }
-        else if (tech == 'node') {
-            res.status(200).json({
-                system: [
-                    { id: "topLevelPrompt", message: node_1.topLevelNodePrompt },
-                    { id: "userPrompt", message: prompt },
-                ]
+        if (tech === "node") {
+            res.json({
+                prompts: [`Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${react_1.basePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
+                uiPrompts: [node_1.basePrompt]
             });
             return;
         }
@@ -85,43 +73,34 @@ routeRouter.post('/get-template', (req, res) => __awaiter(void 0, void 0, void 0
     return;
 }));
 routeRouter.post('/ai-chat', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, e_1, _b, _c;
-    var _d, _e;
+    var _a;
     const messages = req.body.messages;
-    const chatMessages = [...messages, {
-            "role": "system",
-            "content": (0, system_1.getSystemPrompt)()
-        }];
-    console.log(chatMessages);
+    const chatMessages = [
+        {
+            role: "system",
+            content: (0, system_1.getSystemPrompt)()
+        },
+        {
+            role: "system",
+            content: "you can also give code and artifacts for the files which will be required to as per the user project demands. Also give code in such format that is runs directly, do not need to parse the code. Do not use annotations such as &gt and others."
+        },
+        ...messages // <- messages already contains proper role/content structure
+    ];
+    console.log(chatMessages, 'chat messages');
     const response = yield client.chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0.2,
-        max_tokens: 2000,
-        stream: true,
+        model: "chatgpt-4o-latest",
+        temperature: 0,
+        max_tokens: 8000,
         messages: chatMessages,
     });
-    let finalres = "";
-    try {
-        // console.log(JSON.stringify(response?.choices[0]?.message),'thiss');
-        for (var _f = true, response_1 = __asyncValues(response), response_1_1; response_1_1 = yield response_1.next(), _a = response_1_1.done, !_a; _f = true) {
-            _c = response_1_1.value;
-            _f = false;
-            const chunk = _c;
-            const content = ((_e = (_d = chunk.choices[0]) === null || _d === void 0 ? void 0 : _d.delta) === null || _e === void 0 ? void 0 : _e.content) || '';
-            process.stdout.write(content); // Stream output in real time
-            finalres += content;
-        }
-    }
-    catch (e_1_1) { e_1 = { error: e_1_1 }; }
-    finally {
-        try {
-            if (!_f && !_a && (_b = response_1.return)) yield _b.call(response_1);
-        }
-        finally { if (e_1) throw e_1.error; }
-    }
     res.json({
-        code: finalres
+        response: (_a = response === null || response === void 0 ? void 0 : response.choices[0]) === null || _a === void 0 ? void 0 : _a.message
     });
     return;
+}));
+routeRouter.get('/health', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    res.json({
+        "response": "Server is fine."
+    });
 }));
 exports.default = routeRouter;

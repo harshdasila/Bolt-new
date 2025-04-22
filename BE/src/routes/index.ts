@@ -1,8 +1,10 @@
 import { Router } from "express";
 import OpenAi from 'openai'
-import { basicPrompt, topLevelPrompt } from "../constants/react";
 import { topLevelNodePrompt } from "../constants/node";
 import { getSystemPrompt } from "../constants/system";
+import { BASE_PROMPT } from "../prompts";
+import { basePrompt as nodeBasePrompt } from "../defaults/node";
+import { basePrompt as reactBasePrompt } from "../defaults/react";
 require("dotenv").config();
 const apiKey = process.env.OPENAI_API_KEY;
 const client = new OpenAi({
@@ -43,25 +45,20 @@ routeRouter.post('/get-template', async (req, res) => {
     }
     else {
         if (tech === 'react') {
-            res.status(200).json({
-                system: [
-                    { id: "topLevelPrompt", message: topLevelPrompt },
-                    { id: "basicPrompt", message: basicPrompt },
-                    { id: "reactLastPrompt", message: reactLastPrompt },
-                    { id: "userPrompt", message: prompt }
-                ],
-            });
+            res.json({
+                prompts: [BASE_PROMPT, `Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${reactBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
+                uiPrompts: [reactBasePrompt]
+            })
             return;
         }
-        else if (tech == 'node') {
-            res.status(200).json({
-                system: [
-                    { id: "topLevelPrompt", message: topLevelNodePrompt },
-                    { id: "userPrompt", message: prompt },
-                ]
-            });
+        if (tech === "node") {
+            res.json({
+                prompts: [`Here is an artifact that contains all files of the project visible to you.\nConsider the contents of ALL files in the project.\n\n${reactBasePrompt}\n\nHere is a list of files that exist on the file system but are not being shown to you:\n\n  - .gitignore\n  - package-lock.json\n`],
+                uiPrompts: [nodeBasePrompt]
+            })
             return;
         }
+
     }
     res.status(203).json({
         "result": tech
@@ -71,30 +68,35 @@ routeRouter.post('/get-template', async (req, res) => {
 
 routeRouter.post('/ai-chat', async (req, res) => {
     const messages = req.body.messages;
-    const chatMessages = [...messages, {
-        "role": "system",
-        "content": getSystemPrompt()
-    }]
-    console.log(chatMessages);
+    const chatMessages = [
+        {
+            role: "system",
+            content: getSystemPrompt()
+        },
+        {
+            role: "system",
+            content: "you can also give code and artifacts for the files which will be required to as per the user project demands. Also give code in such format that is runs directly, do not need to parse the code. Do not use annotations such as &gt and others."
+        },
+        ...messages // <- messages already contains proper role/content structure
+    ];
+    console.log(chatMessages, 'chat messages')
     const response = await client.chat.completions.create({
-        model: "gpt-4o-mini",
-        temperature: 0.2,
-        max_tokens: 2000,
-        stream: true,
+        model: "chatgpt-4o-latest",
+        temperature: 0,
+        max_tokens: 8000,
         messages: chatMessages,
     });
-    let finalres = ""
-    // console.log(JSON.stringify(response?.choices[0]?.message),'thiss');
-    for await (const chunk of response) {
-        const content = chunk.choices[0]?.delta?.content || '';
-        process.stdout.write(content); // Stream output in real time
-        finalres += content;
-    }
     res.json({
-        code: finalres
+        response: response?.choices[0]?.message
     });
     return;
 }
 )
+
+routeRouter.get('/health', async (req, res) => {
+    res.json({
+        "response": "Server is fine."
+    })
+})
 
 export default routeRouter;
